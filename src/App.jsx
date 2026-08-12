@@ -10,11 +10,18 @@ import CashFlowChart from './components/CashFlowChart';
 import KeyEvents from './components/KeyEvents';
 import NegativeBalanceAlerts from './components/NegativeBalanceAlerts';
 import LegalNotice from './components/LegalNotice';
-import { getAccounts, getRecurringItems, getPlaidAccounts } from './lunchmoney';
+import { getAccounts, getRecurringItems, getPlaidAccounts, getTransactions } from './lunchmoney';
 import { projectCashFlow } from './projection';
 import { getLocalTransactions, addLocalTransaction, updateLocalTransaction, deleteLocalTransaction } from './localTransactions';
 import LocalTransactionForm from './components/LocalTransactionForm';
 import LocalTransactionList from './components/LocalTransactionList';
+
+const getLocalDateString = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
 
 function App() {
   const [apiKey, setApiKey] = useState(localStorage.getItem('lm_api_key'));
@@ -54,17 +61,19 @@ function App() {
       setLoading(true);
       console.log('API Key found, fetching accounts...');
       Promise.all([getAccounts(apiKey), getPlaidAccounts(apiKey)])
-        .then(([accountsData, plaidAccountsData]) => {
-          console.log('Raw Plaid accounts data:', plaidAccountsData);
-          const allAccounts = [...accountsData.assets, ...plaidAccountsData.plaid_accounts];
+        .then(([manualAccounts, plaidAccounts]) => {
+          const allAccounts = [...manualAccounts, ...plaidAccounts];
           setAccounts(allAccounts);
           setLocalTransactions(getLocalTransactions());
 
           const storedAccountId = localStorage.getItem('lm_selected_account_id');
-          if (storedAccountId && allAccounts.some(account => String(account.id) === storedAccountId)) {
+          if (storedAccountId && allAccounts.some(account => account.key === storedAccountId)) {
             setSelectedAccountId(storedAccountId);
+          } else if (storedAccountId && allAccounts.some(account => String(account.id) === storedAccountId)) {
+            const migratedAccount = allAccounts.find(account => String(account.id) === storedAccountId);
+            setSelectedAccountId(migratedAccount.key);
           } else if (allAccounts.length > 0) {
-            setSelectedAccountId(String(allAccounts[0].id));
+            setSelectedAccountId(allAccounts[0].key);
           }
         })
         .catch(err => {
@@ -121,12 +130,23 @@ function App() {
     if (selectedAccountId && projectionHorizon) {
       setLoading(true);
       const today = new Date();
-      const startDate = today.toISOString().slice(0, 10);
-      const endDate = new Date(new Date().setMonth(today.getMonth() + projectionHorizon)).toISOString().slice(0, 10);
+      const startDate = getLocalDateString(today);
+      const projectionEnd = new Date(today);
+      projectionEnd.setMonth(today.getMonth() + projectionHorizon);
+      const endDate = getLocalDateString(projectionEnd);
 
-      getRecurringItems(apiKey, startDate, endDate)
-        .then(recurringItemsData => {
-          const projectionData = projectCashFlow(accounts, recurringItemsData, selectedAccountId, projectionHorizon, localTransactions.map(t => ({...t, date: new Date(t.date)})));
+      Promise.all([
+        getRecurringItems(apiKey, startDate, endDate),
+        getTransactions(apiKey, startDate, endDate),
+      ])
+        .then(([recurringEvents, transactionEvents]) => {
+          const projectionData = projectCashFlow(
+            accounts,
+            [...transactionEvents, ...recurringEvents],
+            selectedAccountId,
+            projectionHorizon,
+            localTransactions.map(t => ({...t, date: new Date(t.date)}))
+          );
           setProjection(projectionData);
         })
         .catch(err => {
@@ -271,4 +291,3 @@ function App() {
 }
 
 export default App;
-

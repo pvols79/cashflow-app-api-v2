@@ -7,13 +7,13 @@ export const getLocalTransactions = () => {
 
 export const addLocalTransaction = (transaction) => {
   const transactions = getLocalTransactions();
-  transactions.push({ ...transaction, id: new Date().getTime(), is_local: true, account_id: parseInt(transaction.account_id) });
+  transactions.push({ ...transaction, id: new Date().getTime(), is_local: true });
   localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
 };
 
 export const updateLocalTransaction = (updatedTransaction) => {
   let transactions = getLocalTransactions();
-  transactions = transactions.map(t => t.id === updatedTransaction.id ? updatedTransaction : t);
+  transactions = transactions.map(t => t.id === updatedTransaction.id ? { ...updatedTransaction, is_local: true } : t);
   localStorage.setItem(STORAGE_KEY, JSON.stringify(transactions));
 };
 

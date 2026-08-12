@@ -51,6 +51,12 @@ npm run dev
 
 The application will typically be available at `http://localhost:5173`.
 
+### Running Tests
+
+```bash
+npm test
+```
+
 ### Building for Production
 
 To build the application for production:
@@ -65,6 +71,27 @@ This will create a `dist` directory with the production-ready files.
 ## Usage
 
 Upon launching the application, you will be prompted to enter your API key for financial data integration. Once configured, you can select accounts, adjust projection settings, and view your cash flow projections.
+
+The Lunch Money API key is stored in browser `localStorage` under `lm_api_key`. It is not hard-coded in the application and should never be committed.
+
+## Lunch Money v2 Integration
+
+This app uses the Lunch Money v2 API directly from the browser:
+
+- `GET /v2/manual_accounts`
+- `GET /v2/plaid_accounts`
+- `GET /v2/recurring`, with a fallback to `GET /v2/recurring_items` for live API environments where the migration-guide path returns 404
+- `GET /v2/transactions?include_pending=true`
+
+Lunch Money v2 transaction amounts use positive values for debits and negative values for credits. At the API adapter boundary, the app normalizes amounts so the projection engine always uses positive for cash inflow and negative for cash outflow.
+
+Manual and Plaid accounts use separate namespaces, so the app filters by compound account keys such as `manual:123` and `plaid:123`. A selected account projection includes only events explicitly tied to that same account key.
+
+Recurring items are read from the v2 recurring endpoint. The app creates projected recurring events only from missing recurring transaction dates. When Lunch Money has matched a recurring occurrence to an actual or pending transaction, the real transaction is used and the projected duplicate is not applied.
+
+Pending transactions are loaded with `include_pending=true` and included in the cash-flow model. Future-dated real transactions returned by Lunch Money are also included for the selected account.
+
+Local transactions remain browser-only and continue to be managed from the existing Manage Local Transactions modal. They are normalized into the same projection event stream as Lunch Money events and are not written back to Lunch Money.
 
 ## Contributing
 
