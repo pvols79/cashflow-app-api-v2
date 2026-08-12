@@ -4,8 +4,17 @@ import pluginReactConfig from "eslint-plugin-react/configs/recommended.js";
 
 export default [
   {
+    ignores: ["dist/**", "node_modules/**"]
+  },
+  {
     languageOptions: {
       globals: globals.browser
+    }
+  },
+  {
+    files: ["vite.config.js", "eslint.config.js"],
+    languageOptions: {
+      globals: globals.node
     }
   },
   pluginJs.configs.recommended,

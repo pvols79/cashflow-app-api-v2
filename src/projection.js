@@ -9,40 +9,76 @@ function getUTCDateString(date) {
   return `${year}-${month}-${day}`;
 }
 
-export const projectCashFlow = (accounts, recurringItems, selectedAccountId, projectionHorizonMonths, localTransactions = []) => {
-  const selectedAccount = accounts.find(acc => acc.id === parseInt(selectedAccountId));
+function getLocalDateString(date) {
+  const year = date.getFullYear();
+  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+  const day = date.getDate().toString().padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+const dateFromInput = (date) => {
+  if (date instanceof Date) return date;
+  return new Date(`${date}T00:00:00Z`);
+};
+
+const eventAffectsSelectedAccount = (event, selectedAccount) => {
+  if (event.accountKey) return event.accountKey === selectedAccount.key;
+
+  // Legacy browser-local records stored numeric account_id before Phase I account keys.
+  return event.account_id != null && (
+    String(event.account_id) === selectedAccount.key ||
+    String(event.account_id) === String(selectedAccount.id)
+  );
+};
+
+const normalizeLocalTransaction = (transaction, selectedAccount) => ({
+  id: `local:${transaction.id}`,
+  accountId: selectedAccount.id,
+  accountSource: selectedAccount.source,
+  accountKey: selectedAccount.key,
+  date: getUTCDateString(dateFromInput(transaction.date)),
+  description: transaction.description || 'Local Transaction',
+  amount: parseFloat(transaction.amount),
+  type: 'local',
+  is_local: true,
+});
+
+const removeSatisfiedRecurringProjections = (events) => {
+  const satisfiedRecurringOccurrences = new Set(
+    events
+      .filter(event => event.type !== 'recurring-projected' && event.recurringId != null)
+      .map(event => `${event.recurringId}:${event.date}:${event.accountKey}`)
+  );
+
+  return events.filter(event => {
+    if (event.type !== 'recurring-projected' || event.recurringId == null) return true;
+    return !satisfiedRecurringOccurrences.has(`${event.recurringId}:${event.date}:${event.accountKey}`);
+  });
+};
+
+export const projectCashFlow = (accounts, cashFlowEvents, selectedAccountId, projectionHorizonMonths, localTransactions = [], options = {}) => {
+  const selectedAccount = accounts.find(acc => acc.key === selectedAccountId);
   if (!selectedAccount) return null;
 
-  const projectionStartDate = new Date(new Date().toISOString().slice(0,10) + 'T00:00:00Z');
+  const anchorDate = options.anchorDate || getLocalDateString(new Date());
+  const projectionStartDate = new Date(`${anchorDate}T00:00:00Z`);
   const projectionEndDate = new Date(projectionStartDate);
   projectionEndDate.setUTCMonth(projectionStartDate.getUTCMonth() + projectionHorizonMonths);
 
+  const selectedApiEvents = cashFlowEvents
+    .filter(event => eventAffectsSelectedAccount(event, selectedAccount))
+    .filter(event => event.date >= anchorDate && event.date <= getUTCDateString(projectionEndDate))
+    .filter(event => event.type !== 'actual' || event.date > anchorDate);
 
-  const projectedTransactions = [
-    ...localTransactions
-      .filter(t => t.account_id === selectedAccount.id)
-      .map(t => ({
-        ...t,
-        amount: parseFloat(t.amount),
-        is_local: true,
-        date: getUTCDateString(t.date),
-      })),
-  ];
+  const selectedLocalEvents = localTransactions
+    .filter(t => eventAffectsSelectedAccount(t, selectedAccount))
+    .map(t => normalizeLocalTransaction(t, selectedAccount))
+    .filter(event => event.date >= anchorDate && event.date <= getUTCDateString(projectionEndDate));
 
-  recurringItems.forEach(item => {
-    if (item.asset_id === selectedAccount.id || item.plaid_account_id === selectedAccount.id) {
-      if (item.missing_dates_within_range) {
-        item.missing_dates_within_range.forEach(date => {
-          projectedTransactions.push({
-            date: date,
-            amount: -parseFloat(item.amount),
-            description: item.payee || 'Recurring Transaction',
-            is_income: item.is_income
-          });
-        });
-      }
-    }
-  });
+  const projectedTransactions = removeSatisfiedRecurringProjections([
+    ...selectedApiEvents,
+    ...selectedLocalEvents,
+  ]);
 
   projectedTransactions.sort((a, b) => new Date(a.date) - new Date(b.date));
 

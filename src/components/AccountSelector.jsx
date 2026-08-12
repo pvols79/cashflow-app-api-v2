@@ -13,7 +13,7 @@ const AccountSelector = ({ accounts, onAccountSelect, selectedAccountId }) => {
       color={textColor}
     >
       {accounts.map(account => (
-        <option key={account.id} value={String(account.id)}>
+        <option key={account.key} value={account.key}>
           {account.display_name || account.name}
         </option>
       ))}

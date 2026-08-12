@@ -1,6 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Box, Button, FormControl, FormLabel, Input, NumberInput, NumberInputField, Select, Stack, useColorModeValue, Heading } from '@chakra-ui/react';
 
+const getLocalDateString = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
 const LocalTransactionForm = ({ transaction, onSave, onCancel, accounts, selectedAccountId: propSelectedAccountId, isAdding }) => {
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState(0);
@@ -9,10 +16,12 @@ const LocalTransactionForm = ({ transaction, onSave, onCancel, accounts, selecte
   const [selectedAccountId, setSelectedAccountId] = useState(propSelectedAccountId || '');
 
   useEffect(() => {
+    const accountValue = accounts.find(account => String(account.id) === String(transaction?.account_id))?.key || transaction?.account_id || '';
+
     if (isAdding) {
       setDescription('');
       setAmount(0);
-      setDate(new Date().toISOString().slice(0, 10));
+      setDate(getLocalDateString(new Date()));
       setType('expense');
       setSelectedAccountId(propSelectedAccountId || '');
     } else if (transaction) {
@@ -20,9 +29,9 @@ const LocalTransactionForm = ({ transaction, onSave, onCancel, accounts, selecte
       setAmount(Math.abs(transaction.amount || 0));
       setDate(transaction.date || '');
       setType(transaction.amount < 0 ? 'expense' : 'income');
-      setSelectedAccountId(transaction.account_id || '');
+      setSelectedAccountId(accountValue);
     }
-  }, [transaction, propSelectedAccountId, isAdding]);
+  }, [accounts, transaction, propSelectedAccountId, isAdding]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -52,9 +61,9 @@ const LocalTransactionForm = ({ transaction, onSave, onCancel, accounts, selecte
         </FormControl>
         <FormControl isRequired>
           <FormLabel>Account</FormLabel>
-          <Select value={selectedAccountId} onChange={(e) => setSelectedAccountId(parseInt(e.target.value))}>
+          <Select value={selectedAccountId} onChange={(e) => setSelectedAccountId(e.target.value)}>
             {accounts.map(account => (
-              <option key={account.id} value={account.id}>
+              <option key={account.key} value={account.key}>
                 {account.display_name || account.name}
               </option>
             ))}
